@@ -1,0 +1,10 @@
+Django==4.2.7
+numpy
+opencv-python
+matplotlib
+Pillow
+rembg
+scikit-image
+fpdf
+gunicorn
+whitenoise

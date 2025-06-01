@@ -1,0 +1,114 @@
+{% extends 'colorizer_app/base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Image Colorizer</h2>
+                
+                {% if error_message %}
+                <div class="alert alert-danger mb-4" role="alert">
+                    {{ error_message }}
+                </div>
+                {% endif %}
+                
+                <form method="post" action="{% url 'upload_image' %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-4">
+                        <label for="{{ form.original_image.id_for_label }}" class="form-label">Select Image</label>
+                        <input type="file" name="{{ form.original_image.name }}" id="{{ form.original_image.id_for_label }}" 
+                               class="form-control" accept="image/*" required>
+                        <small class="form-text text-muted">For best results, use images with clear subjects against contrasting backgrounds.</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label">Choose a Color</label>
+                        <div class="row">
+                            {% for name, hex_color in color_presets.items %}
+                            <div class="col-4 col-md-3 mb-2">
+                                <div class="color-preset" style="background-color: {{ hex_color }};" 
+                                     data-color="{{ hex_color }}" onclick="selectColor('{{ hex_color }}')">
+                                    {{ name }}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="mt-3">
+                            <label for="{{ form.color_hex.id_for_label }}" class="form-label">Custom Color</label>
+                            <input type="color" name="{{ form.color_hex.name }}" id="{{ form.color_hex.id_for_label }}" 
+                                   class="form-control form-control-color" value="#FF3333">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="{{ form.intensity.id_for_label }}" class="form-label">
+                            Color Intensity: <span id="intensity-value">0.7</span>
+                        </label>
+                        <input type="range" name="{{ form.intensity.name }}" id="{{ form.intensity.id_for_label }}" 
+                               class="form-range" min="0.1" max="1.0" step="0.1" value="0.7"
+                               oninput="document.getElementById('intensity-value').textContent = this.value">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="{{ form.edge_smooth.id_for_label }}" class="form-label">
+                            Edge Smoothness: <span id="edge-value">2</span>
+                        </label>
+                        <input type="range" name="{{ form.edge_smooth.name }}" id="{{ form.edge_smooth.id_for_label }}" 
+                               class="form-range" min="0" max="5" step="1" value="2"
+                               oninput="document.getElementById('edge-value').textContent = this.value">
+                        <small class="form-text text-muted">Higher values create smoother edges.</small>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary btn-lg" id="colorize-btn">
+                            <i class="bi bi-magic"></i> Colorize
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function selectColor(hexColor) {
+        document.getElementById('{{ form.color_hex.id_for_label }}').value = hexColor;
+    }
+    
+    // Preview uploaded image
+    document.getElementById('{{ form.original_image.id_for_label }}').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                // Create preview if it doesn't exist
+                let previewContainer = document.querySelector('.image-preview');
+                if (!previewContainer) {
+                    previewContainer = document.createElement('div');
+                    previewContainer.className = 'image-preview mb-4';
+                    const img = document.createElement('img');
+                    previewContainer.appendChild(img);
+                    e.target.parentNode.appendChild(previewContainer);
+                }
+                
+                // Update preview image
+                const img = previewContainer.querySelector('img');
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // Show loading state when form is submitted
+    document.querySelector('form').addEventListener('submit', function() {
+        const button = document.getElementById('colorize-btn');
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+        button.disabled = true;
+    });
+</script>
+{% endblock %}

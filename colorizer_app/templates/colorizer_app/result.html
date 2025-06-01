@@ -1,0 +1,254 @@
+{% extends 'colorizer_app/base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Image Colorizer</h2>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="image-preview">
+                            <img src="{{ colorized_image.original_image.url }}" alt="Original Image" class="img-fluid">
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="image-preview">
+                            <img src="{{ colorized_image.colorized_image.url }}" alt="Colorized Image" class="img-fluid" id="result-image">
+                        </div>
+                        
+                        <div class="text-center mt-3">
+                            <a href="{{ colorized_image.colorized_image.url }}" download="colorized_image.jpg" class="download-btn">
+                                Download
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <h4 class="mb-3">Adjust Colors</h4>
+                    
+                    <div class="mb-4">
+                        <label class="form-label">Choose a Color</label>
+                        <div class="row">
+                            {% for name, hex_color in color_presets.items %}
+                            <div class="col-4 col-md-3 mb-2">
+                                <div class="color-preset" style="background-color: {{ hex_color }};" 
+                                     data-color="{{ hex_color }}" onclick="applyColorPreset('{{ hex_color }}')">
+                                    {{ name }}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="mt-3">
+                            <label for="color-picker" class="form-label">Custom Color</label>
+                            <input type="color" id="color-picker" class="form-control form-control-color" 
+                                   value="{{ colorized_image.color_hex|default:'#FF3333' }}" 
+                                   onchange="applyColorChange(this.value)">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="intensity-slider" class="form-label">
+                            Color Intensity: <span id="intensity-value">{{ colorized_image.intensity }}</span>
+                        </label>
+                        <input type="range" id="intensity-slider" class="form-range" 
+                               min="0.1" max="1.0" step="0.1" value="{{ colorized_image.intensity }}"
+                               oninput="document.getElementById('intensity-value').textContent = this.value; applySliderChange();">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="edge-slider" class="form-label">
+                            Edge Smoothness: <span id="edge-value">{{ colorized_image.edge_smooth }}</span>
+                        </label>
+                        <input type="range" id="edge-slider" class="form-range" 
+                               min="0" max="5" step="1" value="{{ colorized_image.edge_smooth }}"
+                               oninput="document.getElementById('edge-value').textContent = this.value; applySliderChange();">
+                        <small class="form-text text-muted">Higher values create smoother edges.</small>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button id="recolor-btn" class="btn btn-primary btn-lg">
+                            Apply New Color
+                        </button>
+                        
+                        <a href="{% url 'index' %}" class="btn btn-outline-primary btn-lg ms-2">
+                            Upload New Image
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add debounce function to limit how often slider changes trigger recoloring
+    function debounce(func, wait) {
+        let timeout;
+        return function() {
+            const context = this, args = arguments;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), wait);
+        };
+    }
+    
+    // Apply changes when sliders are adjusted (with debounce)
+    const applySliderChange = debounce(function() {
+        const colorHex = document.getElementById('color-picker').value;
+        applyColorToImage(colorHex);
+    }, 500); // Increased debounce time to reduce server load
+    
+    function selectColor(hexColor) {
+        document.getElementById('color-picker').value = hexColor;
+    }
+    
+    // Function to apply color change in real-time
+    function applyColorChange(colorHex) {
+        applyColorToImage(colorHex);
+    }
+    
+    // Function to handle preset color selection
+    function applyColorPreset(colorHex) {
+        // Update color picker to match selected preset
+        document.getElementById('color-picker').value = colorHex;
+        applyColorToImage(colorHex);
+    }
+    
+    // Function to apply color to image via AJAX
+    function applyColorToImage(colorHex) {
+        // Show loading indicator on image
+        const resultImage = document.getElementById('result-image');
+        resultImage.style.opacity = '0.5';
+        
+        // Add loading overlay
+        let loadingOverlay = document.getElementById('loading-overlay');
+        if (!loadingOverlay) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loading-overlay';
+            loadingOverlay.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+            loadingOverlay.style.position = 'absolute';
+            loadingOverlay.style.top = '50%';
+            loadingOverlay.style.left = '50%';
+            loadingOverlay.style.transform = 'translate(-50%, -50%)';
+            resultImage.parentNode.style.position = 'relative';
+            resultImage.parentNode.appendChild(loadingOverlay);
+        } else {
+            loadingOverlay.style.display = 'block';
+        }
+        
+        // Disable controls while processing
+        const controls = [
+            document.getElementById('color-picker'),
+            document.getElementById('intensity-slider'),
+            document.getElementById('edge-slider'),
+            document.getElementById('recolor-btn')
+        ];
+        controls.forEach(control => {
+            if (control) control.disabled = true;
+        });
+        
+        // Get values
+        const intensity = document.getElementById('intensity-slider').value;
+        const edgeSmooth = document.getElementById('edge-slider').value;
+        
+        // Send AJAX request
+        $.ajax({
+            url: "{% url 'recolor_image' colorized_image.id %}",
+            type: "POST",
+            data: {
+                'color_hex': colorHex,
+                'intensity': intensity,
+                'edge_smooth': edgeSmooth,
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Update image with cache-busting parameter
+                    resultImage.src = response.image_url + '?t=' + new Date().getTime();
+                    
+                    // Update download link
+                    const downloadBtn = document.querySelector('.download-btn');
+                    downloadBtn.href = response.image_url;
+                } else {
+                    // Show error message
+                    const errorContainer = document.getElementById('error-container');
+                    if (!errorContainer) {
+                        const container = document.createElement('div');
+                        container.id = 'error-container';
+                        container.className = 'alert alert-danger mt-3';
+                        container.textContent = 'Error: ' + response.error;
+                        document.querySelector('.card-body').insertBefore(
+                            container, 
+                            document.querySelector('.mt-4')
+                        );
+                    } else {
+                        errorContainer.textContent = 'Error: ' + response.error;
+                        errorContainer.style.display = 'block';
+                    }
+                }
+                
+                // Hide loading indicator
+                resultImage.style.opacity = '1';
+                loadingOverlay.style.display = 'none';
+                
+                // Re-enable controls
+                controls.forEach(control => {
+                    if (control) control.disabled = false;
+                });
+            },
+            error: function() {
+                // Show error message
+                const errorContainer = document.getElementById('error-container');
+                if (!errorContainer) {
+                    const container = document.createElement('div');
+                    container.id = 'error-container';
+                    container.className = 'alert alert-danger mt-3';
+                    container.textContent = 'An error occurred while processing your request.';
+                    document.querySelector('.card-body').insertBefore(
+                        container, 
+                        document.querySelector('.mt-4')
+                    );
+                } else {
+                    errorContainer.textContent = 'An error occurred while processing your request.';
+                    errorContainer.style.display = 'block';
+                }
+                
+                // Hide loading indicator
+                resultImage.style.opacity = '1';
+                loadingOverlay.style.display = 'none';
+                
+                // Re-enable controls
+                controls.forEach(control => {
+                    if (control) control.disabled = false;
+                });
+            },
+            timeout: 30000 // 30 second timeout
+        });
+    }
+    
+    // Keep the original button for manual application
+    document.getElementById('recolor-btn').addEventListener('click', function() {
+        const colorHex = document.getElementById('color-picker').value;
+        applyColorToImage(colorHex);
+    });
+    
+    // Hide error message when user makes changes
+    ['color-picker', 'intensity-slider', 'edge-slider'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', function() {
+                const errorContainer = document.getElementById('error-container');
+                if (errorContainer) {
+                    errorContainer.style.display = 'none';
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
