@@ -39,13 +39,23 @@ USER appuser
 EXPOSE 8000
 
 # Start Gunicorn with memory-optimized settings
+# CMD python manage.py migrate && \
+#     gunicorn image_colorizer.wsgi:application \
+#     --bind 0.0.0.0:$PORT \
+#     --workers=1 \
+#     --threads=2 \
+#     --timeout=120 \
+#     --max-requests=1000 \
+#     --max-requests-jitter=100 \
+#     --preload \
+#     --worker-class=sync
 CMD python manage.py migrate && \
     gunicorn image_colorizer.wsgi:application \
-    --bind 0.0.0.0:$PORT \
+    --bind 0.0.0.0:${PORT:-8000} \
     --workers=1 \
+    --worker-class=gthread \
     --threads=2 \
     --timeout=120 \
     --max-requests=1000 \
-    --max-requests-jitter=100 \
     --preload \
-    --worker-class=sync
+    --log-level=info
